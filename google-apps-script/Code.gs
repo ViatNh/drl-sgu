@@ -501,32 +501,43 @@ function convertExcelToGoogleSheet(file, logMessages) {
   var blob = file.getBlob();
   var fileName = file.getName();
   
-  // Cách 1: Dùng Advanced Drive Service
+  // Cách 1: Dùng Drive API v3 (Drive.Files.create)
   try {
     if (typeof Drive !== 'undefined' && Drive.Files) {
       var resource = {
-        title: fileName + ' (converted)',
-        mimeType: MimeType.GOOGLE_SHEETS,
-        parents: [{ id: CONFIG.DRIVE_FOLDER_ID }]
+        name: fileName + ' (converted)',
+        mimeType: MimeType.GOOGLE_SHEETS
+        // KHÔNG set parents — lưu vào root Drive của anh (có quyền ghi)
       };
-      var converted = Drive.Files.insert(resource, blob, { convert: true });
-      logMessages.push('      🔧 Convert OK (Drive API): ' + fileName);
+      var converted = Drive.Files.create(resource, blob, { convert: true });
+      logMessages.push('      🔧 Convert OK (Drive v3): ' + fileName);
       return converted.id;
     }
   } catch (e) {
-    logMessages.push('      🔧 Drive API failed: ' + e.toString().substring(0, 100));
+    // Thử v2 syntax
+    try {
+      var resourceV2 = {
+        title: fileName + ' (converted)',
+        mimeType: MimeType.GOOGLE_SHEETS
+      };
+      var convertedV2 = Drive.Files.insert(resourceV2, blob, { convert: true });
+      logMessages.push('      🔧 Convert OK (Drive v2): ' + fileName);
+      return convertedV2.id;
+    } catch (e2) {
+      logMessages.push('      🔧 Drive API failed: ' + e.toString().substring(0, 80));
+    }
   }
   
-  // Cách 2: Dùng UrlFetchApp gọi REST API
+  // Cách 2: Dùng UrlFetchApp gọi REST API (lưu vào root Drive)
   try {
     var token = ScriptApp.getOAuthToken();
     var metadata = {
       name: fileName + ' (converted)',
-      mimeType: MimeType.GOOGLE_SHEETS,
-      parents: [CONFIG.DRIVE_FOLDER_ID]
+      mimeType: MimeType.GOOGLE_SHEETS
+      // KHÔNG set parents
     };
     
-    var boundary = 'hermes_boundary_' + Math.random().toString(36).slice(2);
+    var boundary = 'hermes_b_' + Math.random().toString(36).slice(2);
     var requestBody = '';
     requestBody += '--' + boundary + '\r\n';
     requestBody += 'Content-Type: application/json; charset=UTF-8\r\n\r\n';
@@ -550,13 +561,13 @@ function convertExcelToGoogleSheet(file, logMessages) {
     
     if (resp.getResponseCode() === 200) {
       var result = JSON.parse(resp.getContentText());
-      logMessages.push('      🔧 Convert OK (REST API): ' + fileName);
+      logMessages.push('      🔧 Convert OK (REST): ' + fileName);
       return result.id;
     } else {
-      logMessages.push('      🔧 REST API HTTP ' + resp.getResponseCode() + ': ' + resp.getContentText().substring(0, 100));
+      logMessages.push('      🔧 REST HTTP ' + resp.getResponseCode() + ': ' + resp.getContentText().substring(0, 100));
     }
   } catch (e2) {
-    logMessages.push('      🔧 REST API error: ' + e2.toString().substring(0, 100));
+    logMessages.push('      🔧 REST error: ' + e2.toString().substring(0, 80));
   }
   
   return null;
