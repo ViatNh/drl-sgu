@@ -29,12 +29,18 @@ var CONFIG = {
   CACHE_DURATION: 21600,
   // Hỗ trợ đa lớp — thêm class vào đây để mở rộng
   TARGET_CLASSES: ['DCT1253'],
-  // Thời gian trigger (giờ UTC+7)
-  TRIGGER_HOURS: [2, 14],
   // Watch interval (phút) — kiểm tra file thay đổi
   WATCH_INTERVAL_MINUTES: 15,
   // Default class cho frontend
   DEFAULT_CLASS: 'DCT1253',
+  // === KIẾN TRÚC MỞ RỘNG ĐA KHOA/LỚP ===
+  // Hiện tại: tất cả lớp dùng chung sheet "Master".
+  // Sau này nếu có thêm Khoa/Drive khác, thêm entry vào đây:
+  // SOURCES: [
+  //   { folderId: '...', classes: ['DCT1253'], sheetName: 'DCT1253' },
+  //   { folderId: '...', classes: ['DCT1251'], sheetName: 'DCT1251' },
+  // ],
+  // Khi đó ETL sẽ lưu mỗi lớp vào sheet riêng, API tự động chọn sheet theo ?lop=
 };
 
 /**
@@ -1097,4 +1103,15 @@ function clearAllTriggers() {
     ScriptApp.deleteTrigger(triggers[i]);
   }
   Logger.log('✅ Đã xóa tất cả trigger (' + triggers.length + ' trigger)');
+}
+
+/**
+ * Xóa toàn bộ cache thủ công.
+ * Chạy hàm này từ Apps Script Editor khi cần refresh dữ liệu ngay lập tức.
+ */
+function clearCache() {
+  var cache = CacheService.getScriptCache();
+  cache.remove('master_data');
+  cache.remove('stats_data');
+  Logger.log('✅ Đã xóa cache master_data + stats_data. API sẽ đọc lại từ Master.');
 }

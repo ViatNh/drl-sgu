@@ -208,8 +208,8 @@ async function checkAPIHealth() {
 async function loadClasses() {
   try {
     const data = await jsonpAPI({ action: 'classes' });
-    if (data.classes && data.classes.length > 1) {
-      // Có nhiều lớp → hiện dropdown
+    if (data.classes && data.classes.length >= 1) {
+      // Luôn hiện dropdown (kể cả 1 lớp để quen UI)
       DOM.classSelect.classList.remove('hidden');
       DOM.classSelect.innerHTML = data.classes.map(c => 
         `<option value="${c}" ${c === data.default ? 'selected' : ''}>${c}</option>`
@@ -436,7 +436,7 @@ function renderDetailRows(details) {
   if (!details || details.length === 0) {
     DOM.detailBody.innerHTML = `
       <tr>
-        <td colspan="5" class="py-8 text-center text-gray-400">
+        <td colspan="4" class="py-8 text-center text-gray-400">
           Không có hoạt động nào
         </td>
       </tr>
@@ -461,10 +461,7 @@ function renderDetailRows(details) {
           +${item.so_diem}
         </span>
       </td>
-      <td class="py-3 px-2 sm:px-3 text-gray-500 text-xs hidden sm:table-cell whitespace-nowrap">
-        ${item.ngay !== 'Không rõ' ? formatDate(item.ngay) : '—'}
-      </td>
-      <td class="py-3 px-2 sm:px-3 text-gray-400 text-xs hidden lg:table-cell max-w-[120px] truncate" 
+      <td class="py-3 px-2 sm:px-3 text-gray-400 text-xs hidden sm:table-cell max-w-[120px] truncate" 
           title="${escapeHtml(item.file_goc || '')}">
         ${item.file_goc ? escapeHtml(item.file_goc) : '—'}
       </td>
