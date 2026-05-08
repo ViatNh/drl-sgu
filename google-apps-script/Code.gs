@@ -24,10 +24,23 @@
 // CẤU HÌNH - THAY ĐỔI TẠI ĐÂY
 // ═══════════════════════════════════════════════════════════════════════════
 var CONFIG = {
-  DRIVE_FOLDER_ID: '1TOgKamuzGi0EwYSdq3U5L8yhts0SWJHB',  // ← THAY BẰNG ID THẬT
+  DRIVE_FOLDER_ID: '1TOgKamuzGi0EwYSdq3U5L8yhts0SWJHB',  // ID thư mục Drive của Khoa
+  MASTER_SHEET_ID: '',                       // ← DÁN ID GOOGLE SHEET MASTER_DCT1253 VÀO ĐÂY
   CACHE_DURATION: 21600,                     // 6 giờ (giây)
   TARGET_CLASS: 'DCT1253',                   // Lớp cần lọc
 };
+
+/**
+ * Lấy reference đến Spreadsheet Master_DCT1253.
+ * Ưu tiên dùng MASTER_SHEET_ID nếu được cấu hình,
+ * nếu không thì dùng Active Spreadsheet (khi Apps Script được tạo từ trong Sheet).
+ */
+function getMasterSpreadsheet() {
+  if (CONFIG.MASTER_SHEET_ID) {
+    return SpreadsheetApp.openById(CONFIG.MASTER_SHEET_ID);
+  }
+  return SpreadsheetApp.getActiveSpreadsheet();
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHẦN 1: DATA PIPELINE (ETL)
@@ -148,7 +161,7 @@ function updateMasterDCT1253() {
     }
     
     // Bước 3: Ghi dữ liệu vào sheet Master
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = getMasterSpreadsheet();
     var masterSheet = ss.getSheetByName('Master');
     
     if (!masterSheet) {
@@ -369,7 +382,7 @@ function removeVietnameseTones(str) {
  */
 function writeLog(startTime, status, fileCount, recordCount, duration, detail) {
   try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = getMasterSpreadsheet();
     var logSheet = ss.getSheetByName('Log');
     
     if (!logSheet) {
@@ -598,7 +611,7 @@ function loadMasterData() {
     }
   }
   
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = getMasterSpreadsheet();
   var masterSheet = ss.getSheetByName('Master');
   
   if (!masterSheet || masterSheet.getLastRow() < 2) {
@@ -626,7 +639,7 @@ function loadMasterData() {
  */
 function getLastUpdateTime() {
   try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = getMasterSpreadsheet();
     var logSheet = ss.getSheetByName('Log');
     if (logSheet && logSheet.getLastRow() >= 2) {
       var lastLog = logSheet.getRange(2, 1).getValue();
