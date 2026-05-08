@@ -25,7 +25,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 var CONFIG = {
   DRIVE_FOLDER_ID: '1TOgKamuzGi0EwYSdq3U5L8yhts0SWJHB',  // ID thư mục Drive của Khoa
-  MASTER_SHEET_ID: '',                       // ← DÁN ID GOOGLE SHEET MASTER_DCT1253 VÀO ĐÂY
+  MASTER_SHEET_ID: '1-ei7QpPzvKvCXNh4zgbRv_Dk60Gr6LmBqxwyOSpsHuU',                       // ← DÁN ID GOOGLE SHEET MASTER_DCT1253 VÀO ĐÂY
   CACHE_DURATION: 21600,                     // 6 giờ (giây)
   TARGET_CLASS: 'DCT1253',                   // Lớp cần lọc
 };
@@ -62,15 +62,46 @@ function updateMasterDCT1253() {
     var folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
     logMessages.push('📁 Đã kết nối thư mục: ' + folder.getName());
     
-    // Bước 2: Duyệt tất cả file Google Sheet
-    var files = folder.getFilesByType(MimeType.GOOGLE_SHEETS);
-    var allRecords = [];  // Mảng chứa tất cả bản ghi điểm
-    var fileCount = 0;
-    var skippedFiles = 0;
+    // Bước 2: Duyệt TẤT CẢ file (cả Google Sheets và Excel)
+    var allFiles = [];
+    var fileTypes = {};
     
-    while (files.hasNext()) {
-      var file = files.next();
+    // Gộp tất cả loại file
+    var gsheetFiles = folder.getFilesByType(MimeType.GOOGLE_SHEETS);
+    while (gsheetFiles.hasNext()) { allFiles.push(gsheetFiles.next()); }
+    fileTypes['Google Sheets'] = allFiles.length;
+    
+    var xlsxFiles = folder.getFilesByType(MimeType.MICROSOFT_EXCEL);
+    var xlsCount = 0;
+    while (xlsxFiles.hasNext()) { allFiles.push(xlsxFiles.next()); xlsCount++; }
+    fileTypes['Excel (.xlsx)'] = xlsCount;
+    
+    var xlsLegacyFiles = folder.getFilesByType(MimeType.MICROSOFT_EXCEL_LEGACY);
+    var xlsLegacyCount = 0;
+    while (xlsLegacyFiles.hasNext()) { allFiles.push(xlsLegacyFiles.next()); xlsLegacyCount++; }
+    fileTypes['Excel (.xls)'] = xlsLegacyCount;
+    
+    logMessages.push('📊 Tổng file: ' + allFiles.length + ' (' + JSON.stringify(fileTypes) + ')');
+    
+    var allRecords = [];
+    var fileCount = 0;
+    var skippedCount = 0;
+    var excelSkippedCount = 0;
+    
+    for (var f = 0; f < allFiles.length; f++) {
+      var file = allFiles[f];
       fileCount++;
+      
+      var mimeType = file.getMimeType();
+      var isGoogleSheet = (mimeType === MimeType.GOOGLE_SHEETS);
+      
+      if (!isGoogleSheet) {
+        excelSkippedCount++;
+        if (excelSkippedCount <= 3) {
+          logMessages.push('  ⚠️ File Excel (cần convert): ' + file.getName());
+        }
+        continue;
+      }
       
       try {
         var spreadsheet = SpreadsheetApp.openById(file.getId());
@@ -78,12 +109,10 @@ function updateMasterDCT1253() {
         
         logMessages.push('  📄 [' + fileCount + '] ' + file.getName() + ' (' + sheets.length + ' sheet)');
         
-        // Duyệt từng sheet con
         for (var s = 0; s < sheets.length; s++) {
           var sheet = sheets[s];
           var sheetName = sheet.getName();
           
-          // Bỏ qua sheet rỗng
           var lastRow = sheet.getLastRow();
           if (lastRow < 2) {
             logMessages.push('      ⏭️ Sheet "' + sheetName + '" rỗng, bỏ qua');
@@ -94,77 +123,100 @@ function updateMasterDCT1253() {
           var data = sheet.getDataRange().getValues();
           if (data.length < 2) continue;
           
-          // Tìm vị trí các cột quan trọng từ hàng tiêu đề
-          var headers = data[0];
-          var colMap = findColumnIndexes(headers);
-          
-          if (!colMap.mssvCol && !colMap.nameCol) {
-            // Sheet không có cột MSSV hoặc Họ tên → bỏ qua
-            skippedFiles++;
-            continue;
-          }
-          
-          // Trích xuất điểm từ tiêu đề
-          // DEBUG: In 20 cột tiêu đề đầu tiên để phân tích
-          logMessages.push('      🔍 DEBUG headers[' + headers.length + ' cột]: ' + 
-            headers.slice(0, 20).map(function(h, i) { return '[' + i + ']' + (h || '').toString().substring(0, 30); }).join(' | '));
-          logMessages.push('      🔍 DEBUG colMap: mssvCol=' + colMap.mssvCol + ' nameCol=' + colMap.nameCol + ' classCol=' + colMap.classCol + ' dateCol=' + colMap.dateCol);
-          
-          var activityPoints = extractPointsFromHeaders(headers, colMap);
-          
-          logMessages.push('      🔍 DEBUG activityPoints: ' + Object.keys(activityPoints).length + ' cột điểm tìm thấy -> ' + 
-            Object.keys(activityPoints).map(function(k) { return '[' + k + ']=' + activityPoints[k].name + '(' + activityPoints[k].point + 'đ)'; }).join(', '));
-          
-          if (Object.keys(activityPoints).length === 0) {
-            logMessages.push('      ℹ️ Sheet "' + sheetName + '" không có cột điểm, bỏ qua');
-            continue;
-          }
-          
-          // Duyệt từng dòng dữ liệu (bỏ qua hàng tiêu đề)
+          // ============================================================
+          // PARSER MỚI: Quét từng dòng tìm hoạt động (+X) + bảng con
+          // ============================================================
           var recordsFromSheet = 0;
-          for (var row = 1; row < data.length; row++) {
+          var currentActivity = null;  // { name, point }
+          
+          for (var row = 0; row < data.length; row++) {
             var rowData = data[row];
             
-            // Kiểm tra lớp
-            var className = colMap.classCol >= 0 ? String(rowData[colMap.classCol] || '').trim().toUpperCase() : '';
-            if (className !== CONFIG.TARGET_CLASS) continue;
-            
-            // Lấy MSSV và Họ tên
-            var mssv = colMap.mssvCol >= 0 ? String(rowData[colMap.mssvCol] || '').trim() : '';
-            var hoTen = colMap.nameCol >= 0 ? String(rowData[colMap.nameCol] || '').trim() : '';
-            
-            if (!mssv || !hoTen) continue;  // Bỏ qua dòng không có MSSV hoặc tên
-            
-            // Với mỗi cột hoạt động có điểm, kiểm tra xem sinh viên có điểm không
-            var colIndexes = Object.keys(activityPoints);
-            for (var c = 0; c < colIndexes.length; c++) {
-              var colIdx = parseInt(colIndexes[c]);
-              var cellValue = rowData[colIdx];
-              var actInfo = activityPoints[colIdx];
+            // Bước 1: Quét tất cả ô trong dòng để tìm pattern (+X) hoặc +Xđ
+            var foundActivity = null;
+            for (var col = 0; col < rowData.length; col++) {
+              var cellStr = String(rowData[col] || '').trim();
+              if (!cellStr) continue;
               
-              // Kiểm tra ô có điểm không (số hoặc chuỗi có thể parse thành số)
-              var pointValue = parseCellValue(cellValue);
-              if (pointValue === null || pointValue === 0) continue;
-              
-              // Xác định tên hoạt động
-              var activityName;
-              if (actInfo.isDynamic) {
-                // Cột "Điểm" dynamic: tên hoạt động từ sheet/file
-                activityName = sheetName.replace(/^[""]|[""]$/g, '');  // bỏ quotes nếu có
-                if (!activityName || activityName.length < 2) {
-                  activityName = file.getName();
+              // Pattern: (+2), (+1.5), +2đ, +5 điểm
+              var match = cellStr.match(/\(\+(\d+(?:\.\d+)?)\)/) || cellStr.match(/\+(\d+(?:\.\d+)?)\s*[đd]?/);
+              if (match) {
+                var pts = parseFloat(match[1]);
+                if (pts > 0 && pts <= 50) {
+                  // Làm sạch tên hoạt động
+                  var actName = cellStr
+                    .replace(/\(\+\d+(?:\.\d+)?\)/g, '')
+                    .replace(/\+\d+(?:\.\d+)?\s*[đdđiểm]*/gi, '')
+                    .replace(/^-{3,}/, '')  // bỏ dòng gạch ngang
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                  
+                  // Bỏ qua dòng chỉ là số mục (VD: "III.2.")
+                  if (actName.length < 10) continue;
+                  
+                  foundActivity = { name: actName, point: pts };
+                  break;
                 }
-              } else {
-                activityName = actInfo.name;
               }
+            }
+            
+            if (foundActivity) {
+              currentActivity = foundActivity;
+              logMessages.push('      🏷️ Hoạt động: "' + currentActivity.name.substring(0, 60) + '" (+' + currentActivity.point + 'đ)');
+              continue;
+            }
+            
+            // Bước 2: Nếu đang trong 1 hoạt động, tìm dòng sinh viên
+            if (currentActivity) {
+              // Dòng sinh viên: ô đầu là STT (số), ô thứ 2 là MSSV (số 6-10 chữ số)
+              var cell0 = String(rowData[0] || '').trim();
+              var cell1 = String(rowData[1] || '').trim();
+              
+              // STT phải là số nguyên dương
+              var stt = parseInt(cell0);
+              if (isNaN(stt) || stt <= 0) continue;
+              
+              // MSSV phải là chuỗi số 6-10 ký tự
+              if (!/^\d{6,10}$/.test(cell1)) continue;
+              
+              var mssv = cell1;
+              
+              // Tìm LỚP: cột chứa "DCT"
+              var lop = '';
+              var hoLot = '';
+              var ten = '';
+              
+              // Cấu trúc cột dựa trên format anh gửi:
+              // STT | MSSV | HỌ LÓT | TÊN | LỚP | KHOA
+              //  0  |  1   |   2    |  3  |  4  |  5
+              hoLot = String(rowData[2] || '').trim();
+              ten = String(rowData[3] || '').trim();
+              lop = String(rowData[4] || '').trim().toUpperCase();
+              
+              // Fallback: quét tất cả cột tìm cột chứa "DCT" nếu col 4 không phải
+              if (lop.indexOf('DCT') < 0) {
+                for (var cc = 0; cc < rowData.length; cc++) {
+                  var cellVal = String(rowData[cc] || '').trim().toUpperCase();
+                  if (cellVal.indexOf('DCT') >= 0) {
+                    lop = cellVal;
+                    break;
+                  }
+                }
+              }
+              
+              // Chỉ giữ sinh viên DCT1253
+              if (lop !== CONFIG.TARGET_CLASS) continue;
+              
+              var hoTen = (hoLot + ' ' + ten).trim();
+              if (!hoTen || hoTen.length < 3) continue;
               
               // Tạo bản ghi
               allRecords.push([
                 mssv,
                 hoTen,
-                activityName,
-                pointValue,
-                actInfo.date || '',
+                currentActivity.name,
+                currentActivity.point,
+                '',                       // ngày (không có trong format này)
                 file.getName(),
                 sheetName
               ]);
@@ -174,11 +226,17 @@ function updateMasterDCT1253() {
           
           if (recordsFromSheet > 0) {
             logMessages.push('      ✅ ' + recordsFromSheet + ' bản ghi từ sheet "' + sheetName + '"');
+          } else {
+            logMessages.push('      ℹ️ Sheet "' + sheetName + '" không có dữ liệu DCT1253');
           }
         }
       } catch (fileErr) {
         logMessages.push('  ❌ Lỗi xử lý file ' + file.getName() + ': ' + fileErr.toString());
       }
+    }
+    
+    if (excelSkippedCount > 0) {
+      logMessages.push('⚠️ ' + excelSkippedCount + ' file Excel bị bỏ qua (cần convert sang Google Sheets)');
     }
     
     // Bước 3: Ghi dữ liệu vào sheet Master
@@ -215,13 +273,14 @@ function updateMasterDCT1253() {
     
     logMessages.push('');
     logMessages.push('📊 TỔNG KẾT:');
-    logMessages.push('   - File đã quét: ' + fileCount);
+    var gsheetCount = fileCount - excelSkippedCount;
+    logMessages.push('   - File đã quét: ' + gsheetCount + ' Google Sheets' + (excelSkippedCount > 0 ? ' (' + excelSkippedCount + ' Excel bị bỏ qua)' : ''));
     logMessages.push('   - Tổng bản ghi: ' + allRecords.length);
     logMessages.push('   - Thời gian: ' + duration + ' giây');
     logMessages.push('✅ HOÀN THÀNH lúc: ' + endTime.toLocaleString('vi-VN'));
     
     // Ghi log
-    writeLog(startTime, 'SUCCESS', fileCount, allRecords.length, duration + 's', logMessages.join('\n'));
+    writeLog(startTime, 'SUCCESS', gsheetCount, allRecords.length, duration + 's', logMessages.join('\n'));
     
   } catch (err) {
     logMessages.push('❌ LỖI NGHIÊM TRỌNG: ' + err.toString());
