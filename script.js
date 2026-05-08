@@ -106,13 +106,8 @@ function initEventListeners() {
   // Nút chia sẻ
   DOM.shareBtn.addEventListener('click', handleShare);
   
-  // Nút tra cứu mới
-  DOM.newSearchBtn.addEventListener('click', () => {
-    DOM.mssvInput.value = '';
-    DOM.mssvInput.focus();
-    showEmptyState();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  });
+  // Nút cập nhật cache (thay thế "Tra cứu mới")
+  DOM.newSearchBtn.addEventListener('click', handleRefreshCache);
   
   // Sort table headers
   document.querySelectorAll('#detailTable th[data-sort]').forEach(th => {
@@ -280,18 +275,19 @@ async function handleShare() {
   if (!currentResult) return;
   
   const shareBtn = DOM.shareBtn;
-  const originalText = shareBtn.textContent;
-  shareBtn.textContent = '⏳ Đang chụp...';
+  const originalHTML = shareBtn.innerHTML;
+  shareBtn.innerHTML = '⏳ Đang chụp...';
   shareBtn.disabled = true;
   
   try {
-    // Chụp ảnh bảng kết quả bằng html2canvas
-    const resultCard = document.getElementById('resultCard');
-    const canvas = await html2canvas(resultCard, {
-      backgroundColor: '#ffffff',
-      scale: 2,  // Độ phân giải cao
+    // Chỉ chụp vùng bảng kết quả (không bao gồm nút Chia sẻ / Cập nhật)
+    const captureArea = document.getElementById('shareCaptureArea');
+    const canvas = await html2canvas(captureArea, {
+      backgroundColor: null,  // Trong suốt — tránh overlay trắng đục
+      scale: 2,               // Độ phân giải cao
       useCORS: true,
       logging: false,
+      allowTaint: true,       // Cho phép render gradient từ CSS
     });
     
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
@@ -334,8 +330,52 @@ async function handleShare() {
       }
     }
   } finally {
-    shareBtn.textContent = originalText;
+    shareBtn.innerHTML = originalHTML;
     shareBtn.disabled = false;
+  }
+}
+
+/**
+ * Xử lý cập nhật cache — gọi API clear_cache rồi tra cứu lại MSSV hiện tại.
+ */
+async function handleRefreshCache() {
+  if (!currentResult) return;
+  
+  const btn = DOM.newSearchBtn;
+  const originalText = btn.textContent;
+  btn.textContent = '⏳ Đang cập nhật...';
+  btn.disabled = true;
+  
+  try {
+    // Gọi API xóa cache
+    const clearRes = await jsonpAPI({ action: 'clear_cache' });
+    console.log('🗑️ Cache cleared:', clearRes);
+    
+    // Tra cứu lại MSSV hiện tại với dữ liệu mới
+    if (clearRes.status === 'ok') {
+      const mssv = currentResult.mssv;
+      setLoading(true);
+      DOM.loadingCard.classList.remove('hidden');
+      
+      const data = await fetchStudentScore(mssv);
+      
+      if (data.status === 'ok') {
+        currentResult = data;
+        renderResult(data);
+        showToast('✅ Dữ liệu đã được cập nhật!');
+      } else {
+        showToast('⚠️ Không thể cập nhật: ' + (data.message || 'Lỗi'));
+      }
+    } else {
+      showToast('⚠️ Không thể xóa cache: ' + (clearRes.message || 'Lỗi'));
+    }
+  } catch (err) {
+    showToast('❌ Lỗi: ' + err.message);
+  } finally {
+    setLoading(false);
+    DOM.loadingCard.classList.add('hidden');
+    btn.textContent = originalText;
+    btn.disabled = false;
   }
 }
 
@@ -411,7 +451,9 @@ function renderResult(data) {
   
   // Cache indicator
   if (data._cached) {
-    DOM.lastUpdate.textContent += ' (cache)';
+    DOM.lastUpdate.innerHTML += ' <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 ml-1">📦 Cache</span>';
+  } else {
+    DOM.lastUpdate.innerHTML += ' <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 ml-1">✨ Mới</span>';
   }
   
   // Render bảng chi tiết

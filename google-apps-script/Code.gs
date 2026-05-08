@@ -310,8 +310,8 @@ function updateMasterDCT1253() {
       masterSheet.getRange(2, 6, allRecords.length, 1).setNumberFormat('0.0#');
     }
     
-    // Bước 4: Xóa cache cũ để lần gọi API tiếp theo lấy dữ liệu mới
-    CacheService.getScriptCache().remove('master_cache');
+    // Bước 4: Xóa TOÀN BỘ cache (dùng cache epoch để invalidate per-MSSV cache)
+    bumpCacheEpoch();
     
     // Tính thời gian
     var endTime = new Date();
@@ -738,6 +738,15 @@ function handleRequest(e) {
         default: CONFIG.DEFAULT_CLASS
       };
     }
+    // ── Endpoint: Xóa cache (public — ai cũng gọi được để refresh) ──
+    else if (action === 'clear_cache') {
+      var newEpoch = bumpCacheEpoch();
+      responseData = {
+        status: 'ok',
+        message: 'Cache đã được xóa. Dữ liệu sẽ được đọc lại từ Master.',
+        epoch: newEpoch
+      };
+    }
     // ── Mặc định: Hướng dẫn sử dụng ──
     else {
       responseData = {
@@ -746,6 +755,7 @@ function handleRequest(e) {
         classes: CONFIG.TARGET_CLASSES,
         usage: {
           lookup: '?mssv=225xxxx',
+          refresh_cache: '?action=clear_cache',
           classes: '?action=classes',
           stats: '?action=stats',
           health: '?action=health'
@@ -789,15 +799,16 @@ function queryMSSV(mssv) {
     };
   }
   
-  // Kiểm tra cache
+  // Kiểm tra cache (dùng epoch để invalidate toàn bộ khi ETL chạy)
   var cache = CacheService.getScriptCache();
-  var cacheKey = 'mssv_' + mssv;
+  var epoch = getCacheEpoch();
+  var cacheKey = 'v' + epoch + '_mssv_' + mssv;
   var cached = cache.get(cacheKey);
   
-  if (cached) {
+  if (cached !== null) {
     var result = JSON.parse(cached);
     result._cached = true;
-    result._cache_age = 'tối đa ' + (CONFIG.CACHE_DURATION / 3600) + ' giờ';
+    result._cache_epoch = epoch;
     return result;
   }
   
@@ -1106,12 +1117,46 @@ function clearAllTriggers() {
 }
 
 /**
- * Xóa toàn bộ cache thủ công.
- * Chạy hàm này từ Apps Script Editor khi cần refresh dữ liệu ngay lập tức.
+ * Lấy cache epoch hiện tại.
+ * Dùng để invalidate toàn bộ per-MSSV cache mỗi khi ETL chạy hoặc clearCache().
+ * 
+ * Pattern: Cache key = 'v<epoch>_mssv_<mssv>'
+ * Khi epoch thay đổi → tất cả per-MSSV cache cũ thành orphan (hết hạn tự nhiên).
  */
-function clearCache() {
+function getCacheEpoch() {
+  var props = PropertiesService.getScriptProperties();
+  var epoch = props.getProperty('CACHE_EPOCH');
+  if (!epoch) {
+    epoch = Date.now().toString();
+    props.setProperty('CACHE_EPOCH', epoch);
+  }
+  return epoch;
+}
+
+/**
+ * Tăng cache epoch — invalidate toàn bộ per-MSSV cache.
+ * Gọi sau khi ETL chạy hoặc khi cần refresh thủ công.
+ */
+function bumpCacheEpoch() {
+  var newEpoch = Date.now().toString();
+  PropertiesService.getScriptProperties().setProperty('CACHE_EPOCH', newEpoch);
+  
+  // Đồng thời xóa cache dữ liệu chung
   var cache = CacheService.getScriptCache();
   cache.remove('master_data');
   cache.remove('stats_data');
-  Logger.log('✅ Đã xóa cache master_data + stats_data. API sẽ đọc lại từ Master.');
+  
+  console.log('🔄 Cache epoch mới: ' + newEpoch + ' — toàn bộ cache đã bị vô hiệu');
+  return newEpoch;
+}
+
+/**
+ * Xóa toàn bộ cache thủ công.
+ * Chạy hàm này từ Apps Script Editor khi cần refresh dữ liệu ngay lập tức.
+ * Có thể gọi từ API với ?action=clear_cache (yêu cầu admin key).
+ */
+function clearCache() {
+  var newEpoch = bumpCacheEpoch();
+  Logger.log('✅ Đã xóa TOÀN BỘ cache (epoch: ' + newEpoch + '). API sẽ đọc lại từ Master.');
+  return newEpoch;
 }
