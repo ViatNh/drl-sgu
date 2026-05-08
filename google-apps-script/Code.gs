@@ -96,15 +96,29 @@ function updateMasterDCT1253() {
       var isGoogleSheet = (mimeType === MimeType.GOOGLE_SHEETS);
       
       if (!isGoogleSheet) {
-        excelSkippedCount++;
-        if (excelSkippedCount <= 3) {
-          logMessages.push('  ⚠️ File Excel (cần convert): ' + file.getName());
+        // Thử convert Excel → Google Sheets
+        try {
+          var convertedId = convertExcelToGoogleSheet(file);
+          if (convertedId) {
+            spreadsheet = SpreadsheetApp.openById(convertedId);
+            logMessages.push('  🔄 [' + fileCount + '] ' + file.getName() + ' → đã convert sang Google Sheets');
+            // Tiếp tục xử lý như Google Sheets bình thường (xuống dưới)
+          } else {
+            excelSkippedCount++;
+            continue;
+          }
+        } catch (convErr) {
+          excelSkippedCount++;
+          if (excelSkippedCount <= 3) {
+            logMessages.push('  ⚠️ File Excel (không convert được): ' + file.getName() + ' - ' + convErr.toString());
+          }
+          continue;
         }
-        continue;
+      } else {
+        spreadsheet = SpreadsheetApp.openById(file.getId());
       }
       
       try {
-        var spreadsheet = SpreadsheetApp.openById(file.getId());
         var sheets = spreadsheet.getSheets();
         
         logMessages.push('  📄 [' + fileCount + '] ' + file.getName() + ' (' + sheets.length + ' sheet)');
@@ -473,6 +487,30 @@ function removeVietnameseTones(str) {
 }
 
 /**
+ * Convert file Excel (.xlsx/.xls) sang Google Sheets.
+ * Sử dụng Advanced Drive Service (cần bật trong Resources → Advanced Google Services).
+ * Nếu không bật Drive API, hàm sẽ trả về null và file Excel sẽ bị bỏ qua.
+ * 
+ * @param {File} file - File Excel từ DriveApp
+ * @return {string|null} ID của Google Sheet đã convert, hoặc null nếu thất bại
+ */
+function convertExcelToGoogleSheet(file) {
+  try {
+    var blob = file.getBlob();
+    var resource = {
+      title: file.getName() + ' (converted)',
+      mimeType: MimeType.GOOGLE_SHEETS,
+      parents: [{ id: CONFIG.DRIVE_FOLDER_ID }]
+    };
+    var converted = Drive.Files.insert(resource, blob, { convert: true });
+    return converted.id;
+  } catch (e) {
+    // Drive API chưa được bật hoặc lỗi khác
+    return null;
+  }
+}
+
+/**
  * Ghi log vào sheet "Log".
  */
 function writeLog(startTime, status, fileCount, recordCount, duration, detail) {
@@ -539,9 +577,22 @@ function testETL() {
  * @return {ContentService} JSON response
  */
 function doGet(e) {
-  // Thiết lập CORS headers (cho phép frontend gọi API từ GitHub Pages)
-  var output = ContentService.createTextOutput();
-  output.setMimeType(ContentService.MimeType.JSON);
+  return handleRequest(e);
+}
+
+/**
+ * Xử lý cả GET và POST request (POST cũng gọi hàm này).
+ */
+function doPost(e) {
+  return handleRequest(e);
+}
+
+/**
+ * Hàm xử lý request chính.
+ * Đảm bảo luôn trả về JSON với CORS headers.
+ */
+function handleRequest(e) {
+  var responseData;
   
   try {
     var params = e && e.parameter ? e.parameter : {};
@@ -550,42 +601,43 @@ function doGet(e) {
     
     // ── Endpoint: Tra cứu điểm theo MSSV ──
     if (mssv) {
-      return respondJSON(queryMSSV(mssv));
+      responseData = queryMSSV(mssv);
     }
-    
     // ── Endpoint: Thống kê ──
-    if (action === 'stats') {
-      return respondJSON(getStats());
+    else if (action === 'stats') {
+      responseData = getStats();
     }
-    
     // ── Endpoint: Health check ──
-    if (action === 'health') {
-      return respondJSON({
+    else if (action === 'health') {
+      responseData = {
         status: 'ok',
         timestamp: new Date().toISOString(),
         version: '1.0.0',
         class: CONFIG.TARGET_CLASS
-      });
+      };
     }
-    
     // ── Mặc định: Hướng dẫn sử dụng ──
-    return respondJSON({
-      status: 'ok',
-      message: 'API Tra cứu Điểm Hoạt động DCT1253',
-      usage: {
-        lookup: '?mssv=225xxxx',
-        stats: '?action=stats',
-        health: '?action=health'
-      },
-      timestamp: new Date().toISOString()
-    });
-    
+    else {
+      responseData = {
+        status: 'ok',
+        message: 'API Tra cứu Điểm Hoạt động DCT1253',
+        usage: {
+          lookup: '?mssv=225xxxx',
+          stats: '?action=stats',
+          health: '?action=health'
+        },
+        timestamp: new Date().toISOString()
+      };
+    }
   } catch (err) {
-    return respondJSON({
+    responseData = {
       status: 'error',
       message: 'Lỗi hệ thống: ' + err.toString()
-    });
+    };
   }
+  
+  return ContentService.createTextOutput(JSON.stringify(responseData, null, 2))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 /**

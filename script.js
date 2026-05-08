@@ -13,11 +13,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const CONFIG = {
   API_BASE_URL: 'https://script.google.com/macros/s/AKfycbwTdt_55xq9AxU_E4dZAmgiryWZNvu9jgXxaJ9YFAE5xAUJkeTnKcPgx3VHRhSVSa_Esg/exec',
-  // Ví dụ: 'https://script.google.com/macros/s/AKfycbxxxxx/exec'
   
   MAX_RECENT_MSSV: 5,
   RECENT_STORAGE_KEY: 'dct1253_recent_mssv',
-  DEBOUNCE_DELAY: 300,  // ms
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -93,13 +91,6 @@ function initEventListeners() {
     
     // Hiển thị/ẩn nút clear
     DOM.clearBtn.classList.toggle('hidden', !filtered);
-    
-    // Auto-search khi nhập đủ 6+ ký tự (debounced)
-    debounce(() => {
-      if (filtered.length >= 6) {
-        handleSearch();
-      }
-    }, CONFIG.DEBOUNCE_DELAY)();
   });
   
   // Nút clear
@@ -127,16 +118,6 @@ function initEventListeners() {
       const field = th.getAttribute('data-sort');
       handleSort(field);
     });
-  });
-  
-  // Paste event: tự động tìm kiếm khi paste MSSV
-  DOM.mssvInput.addEventListener('paste', (e) => {
-    setTimeout(() => {
-      const value = DOM.mssvInput.value.replace(/[^0-9]/g, '');
-      if (value.length >= 6) {
-        handleSearch();
-      }
-    }, 100);
   });
 }
 
@@ -658,14 +639,6 @@ function getScoreBadgeClass(score) {
  * @param {number} delay 
  * @return {Function}
  */
-function debounce(fn, delay) {
-  let timer;
-  return function(...args) {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn.apply(this, args), delay);
-  };
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // PWA / SERVICE WORKER (Optional - for offline caching)
 // ═══════════════════════════════════════════════════════════════════════════
