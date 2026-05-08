@@ -195,14 +195,9 @@ async function handleSearch() {
   const mssv = DOM.mssvInput.value.replace(/[^0-9]/g, '').trim();
   
   // Validate
-  if (!mssv || mssv.length < 6) {
-    showError('MSSV không hợp lệ', 'Vui lòng nhập mã số sinh viên (tối thiểu 6 chữ số).');
+  if (!mssv || mssv.length !== 10) {
+    showError('MSSV không hợp lệ', 'Vui lòng nhập đúng 10 chữ số.');
     DOM.mssvInput.focus();
-    return;
-  }
-  
-  if (mssv.length > 10) {
-    showError('MSSV không hợp lệ', 'Mã số sinh viên không được quá 10 chữ số.');
     return;
   }
   

@@ -65,6 +65,10 @@ function updateMasterDCT1253() {
     var folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
     logMessages.push('📁 Đã kết nối thư mục: ' + folder.getName());
     
+    // Tạo thư mục riêng để chứa file Excel đã convert (nếu chưa có)
+    var convertedFolder = getOrCreateConvertedFolder();
+    logMessages.push('📁 Thư mục convert: ' + convertedFolder.getName());
+    
     // Bước 2: Duyệt TẤT CẢ file (cả Google Sheets và Excel)
     var allFiles = [];
     var fileTypes = {};
@@ -101,7 +105,7 @@ function updateMasterDCT1253() {
       if (!isGoogleSheet) {
         // Thử convert Excel → Google Sheets
         try {
-          var convertedId = convertExcelToGoogleSheet(file, logMessages);
+          var convertedId = convertExcelToGoogleSheet(file, convertedFolder.getId(), logMessages);
           if (convertedId) {
             spreadsheet = SpreadsheetApp.openById(convertedId);
             logMessages.push('  🔄 [' + fileCount + '] ' + file.getName() + ' → đã convert sang Google Sheets');
@@ -194,7 +198,7 @@ function updateMasterDCT1253() {
               if (isNaN(stt) || stt <= 0) continue;
               
               // MSSV phải là chuỗi số 6-10 ký tự
-              if (!/^\d{6,10}$/.test(cell1)) continue;
+              if (!/^\d{10}$/.test(cell1)) continue;
               
               var mssv = cell1;
               
@@ -490,6 +494,19 @@ function removeVietnameseTones(str) {
 }
 
 /**
+ * Lấy hoặc tạo thư mục "DCT1253_Converted" trong My Drive.
+ * Dùng để chứa các file Excel đã convert sang Google Sheets.
+ * 
+ * @return {Folder} Thư mục convert
+ */
+function getOrCreateConvertedFolder() {
+  var folderName = 'DCT1253_Converted';
+  var folders = DriveApp.getFoldersByName(folderName);
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(folderName);
+}
+
+/**
  * Convert file Excel (.xlsx/.xls) sang Google Sheets.
  * Sử dụng Advanced Drive Service (cần bật trong Resources → Advanced Google Services).
  * Nếu không bật Drive API, hàm sẽ trả về null và file Excel sẽ bị bỏ qua.
@@ -497,7 +514,7 @@ function removeVietnameseTones(str) {
  * @param {File} file - File Excel từ DriveApp
  * @return {string|null} ID của Google Sheet đã convert, hoặc null nếu thất bại
  */
-function convertExcelToGoogleSheet(file, logMessages) {
+function convertExcelToGoogleSheet(file, convertedFolderId, logMessages) {
   var blob = file.getBlob();
   var fileName = file.getName();
   
@@ -506,8 +523,8 @@ function convertExcelToGoogleSheet(file, logMessages) {
     if (typeof Drive !== 'undefined' && Drive.Files) {
       var resource = {
         name: fileName + ' (converted)',
-        mimeType: MimeType.GOOGLE_SHEETS
-        // KHÔNG set parents — lưu vào root Drive của anh (có quyền ghi)
+        mimeType: MimeType.GOOGLE_SHEETS,
+        parents: [convertedFolderId]
       };
       var converted = Drive.Files.create(resource, blob, { convert: true });
       logMessages.push('      🔧 Convert OK (Drive v3): ' + fileName);
@@ -518,7 +535,8 @@ function convertExcelToGoogleSheet(file, logMessages) {
     try {
       var resourceV2 = {
         title: fileName + ' (converted)',
-        mimeType: MimeType.GOOGLE_SHEETS
+        mimeType: MimeType.GOOGLE_SHEETS,
+        parents: [{ id: convertedFolderId }]
       };
       var convertedV2 = Drive.Files.insert(resourceV2, blob, { convert: true });
       logMessages.push('      🔧 Convert OK (Drive v2): ' + fileName);
@@ -533,8 +551,8 @@ function convertExcelToGoogleSheet(file, logMessages) {
     var token = ScriptApp.getOAuthToken();
     var metadata = {
       name: fileName + ' (converted)',
-      mimeType: MimeType.GOOGLE_SHEETS
-      // KHÔNG set parents
+      mimeType: MimeType.GOOGLE_SHEETS,
+      parents: [convertedFolderId]
     };
     
     var boundary = 'hermes_b_' + Math.random().toString(36).slice(2);
@@ -712,11 +730,11 @@ function handleRequest(e) {
  */
 function queryMSSV(mssv) {
   // Validate MSSV format (chỉ chấp nhận số, 6-10 ký tự)
-  var mssvPattern = /^\d{6,10}$/;
+  var mssvPattern = /^\d{10}$/;
   if (!mssvPattern.test(mssv)) {
     return {
       status: 'error',
-      message: 'MSSV không hợp lệ. Vui lòng nhập mã số sinh viên (6-10 chữ số).'
+      message: 'MSSV không hợp lệ. Vui lòng nhập đúng 10 chữ số.'
     };
   }
   
