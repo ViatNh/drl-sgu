@@ -1,0 +1,225 @@
+/**
+ * ============================================================================
+ * TRA CỨU ĐIỂM HOẠT ĐỘNG DCT1253 - Custom CSS
+ * ============================================================================
+ * File: style.css
+ * Mô tả: CSS bổ sung cho Tailwind (animation, transitions, custom components)
+ * ============================================================================
+ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * BASE STYLES
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Smooth scroll */
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Selection color */
+::selection {
+  background-color: #3b82f6;
+  color: white;
+}
+
+/* Focus visible (accessibility) */
+:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * ANIMATIONS
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Fade in up (cho kết quả) */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.4s ease-out;
+}
+
+/* Fade in (cho toast) */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Pulse (cho loading) */
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+  70% { box-shadow: 0 0 0 12px rgba(59, 130, 246, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2s infinite;
+}
+
+/* Shimmer (cho skeleton loading) */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Score counter pop */
+@keyframes scorePop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.score-pop {
+  animation: scorePop 0.3s ease-out;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * RESULT CARD ENTRANCE
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+#resultCard:not(.hidden) {
+  animation: fadeInUp 0.5s ease-out;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * INPUT STYLES
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Tùy chỉnh input number - ẩn spinner */
+#mssvInput::-webkit-inner-spin-button,
+#mssvInput::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+#mssvInput[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* Placeholder style */
+#mssvInput::placeholder {
+  color: #9ca3af;
+  font-size: 0.95rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * TABLE STYLES
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Table hover effect */
+#detailBody tr {
+  transition: background-color 0.15s ease;
+}
+
+#detailBody tr:hover {
+  background-color: #f0f9ff !important; /* brand-50 */
+}
+
+/* Sortable header */
+#detailTable th[data-sort] {
+  user-select: none;
+  transition: color 0.15s ease;
+}
+
+#detailTable th[data-sort]:active {
+  color: #2563eb;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * RESPONSIVE OVERRIDES
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Mobile: full-width buttons */
+@media (max-width: 640px) {
+  #searchBtn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  #mssvInput {
+    font-size: 1.1rem;
+    padding: 0.875rem 1rem;
+  }
+}
+
+/* Dark mode (nếu muốn thêm sau) */
+@media (prefers-color-scheme: dark) {
+  /* 
+  .dark body { background: #111827; }
+  .dark .bg-white { background: #1f2937; }
+  */
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * PRINT STYLES
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+@media print {
+  header, footer, #searchBtn, #recentMssv, #shareBtn, #newSearchBtn,
+  #loadingCard, #errorCard, #emptyCard {
+    display: none !important;
+  }
+  
+  body {
+    background: white !important;
+  }
+  
+  #resultCard {
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+  }
+  
+  .bg-gradient-to-r {
+    background: #1e40af !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * ACCESSIBILITY
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Screen reader only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
