@@ -1024,22 +1024,13 @@ function getWebAppUrl() {
 function setupDailyTrigger() {
   clearAllTriggers();
   
-  // Trigger kép: chạy ETL vào các giờ đã cấu hình
-  for (var h = 0; h < CONFIG.TRIGGER_HOURS.length; h++) {
-    ScriptApp.newTrigger('updateMasterDCT1253')
-      .timeBased()
-      .everyDays(1)
-      .atHour(CONFIG.TRIGGER_HOURS[h])
-      .create();
-  }
-  
-  // Trigger watch: kiểm tra file thay đổi mỗi N phút
+  // Trigger watch: kiểm tra file thay đổi mỗi N phút → chạy ETL ngay nếu có
   ScriptApp.newTrigger('watchDriveChanges')
     .timeBased()
     .everyMinutes(CONFIG.WATCH_INTERVAL_MINUTES)
     .create();
   
-  Logger.log('✅ Triggers: ETL lúc ' + CONFIG.TRIGGER_HOURS.join('h, ') + 'h + watch mỗi ' + CONFIG.WATCH_INTERVAL_MINUTES + 'ph');
+  Logger.log('✅ Trigger: watch mỗi ' + CONFIG.WATCH_INTERVAL_MINUTES + ' phút');
 }
 
 /**
