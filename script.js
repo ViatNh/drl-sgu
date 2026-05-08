@@ -12,7 +12,7 @@
 // CẤU HÌNH - THAY ĐỔI URL API TẠI ĐÂY SAU KHI DEPLOY WEB APP
 // ═══════════════════════════════════════════════════════════════════════════
 const CONFIG = {
-  API_BASE_URL: 'https://script.google.com/macros/s/AKfycbwTdt_55xq9AxU_E4dZAmgiryWZNvu9jgXxaJ9YFAE5xAUJkeTnKcPgx3VHRhSVSa_Esg/exec',
+  API_BASE_URL: 'https://script.google.com/macros/s/AKfycbyBs9F7fnT9sN8khpFaxMhVR0FUBmPvBplU8a8yXWka2UkkAUSk-7IzZ6UypiNNPDx7eA/exec',
   
   MAX_RECENT_MSSV: 5,
   RECENT_STORAGE_KEY: 'dct1253_recent_mssv',
