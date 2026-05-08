@@ -105,7 +105,15 @@ function updateMasterDCT1253() {
           }
           
           // Trích xuất điểm từ tiêu đề
+          // DEBUG: In 20 cột tiêu đề đầu tiên để phân tích
+          logMessages.push('      🔍 DEBUG headers[' + headers.length + ' cột]: ' + 
+            headers.slice(0, 20).map(function(h, i) { return '[' + i + ']' + (h || '').toString().substring(0, 30); }).join(' | '));
+          logMessages.push('      🔍 DEBUG colMap: mssvCol=' + colMap.mssvCol + ' nameCol=' + colMap.nameCol + ' classCol=' + colMap.classCol + ' dateCol=' + colMap.dateCol);
+          
           var activityPoints = extractPointsFromHeaders(headers, colMap);
+          
+          logMessages.push('      🔍 DEBUG activityPoints: ' + Object.keys(activityPoints).length + ' cột điểm tìm thấy -> ' + 
+            Object.keys(activityPoints).map(function(k) { return '[' + k + ']=' + activityPoints[k].name + '(' + activityPoints[k].point + 'đ)'; }).join(', '));
           
           if (Object.keys(activityPoints).length === 0) {
             logMessages.push('      ℹ️ Sheet "' + sheetName + '" không có cột điểm, bỏ qua');
@@ -132,20 +140,33 @@ function updateMasterDCT1253() {
             for (var c = 0; c < colIndexes.length; c++) {
               var colIdx = parseInt(colIndexes[c]);
               var cellValue = rowData[colIdx];
+              var actInfo = activityPoints[colIdx];
               
               // Kiểm tra ô có điểm không (số hoặc chuỗi có thể parse thành số)
               var pointValue = parseCellValue(cellValue);
               if (pointValue === null || pointValue === 0) continue;
               
+              // Xác định tên hoạt động
+              var activityName;
+              if (actInfo.isDynamic) {
+                // Cột "Điểm" dynamic: tên hoạt động từ sheet/file
+                activityName = sheetName.replace(/^[""]|[""]$/g, '');  // bỏ quotes nếu có
+                if (!activityName || activityName.length < 2) {
+                  activityName = file.getName();
+                }
+              } else {
+                activityName = actInfo.name;
+              }
+              
               // Tạo bản ghi
               allRecords.push([
                 mssv,
                 hoTen,
-                activityPoints[colIdx].name,           // Tên hoạt động
-                pointValue,                              // Số điểm
-                activityPoints[colIdx].date || '',       // Ngày thực hiện (nếu có)
-                file.getName(),                          // File gốc
-                sheetName                                // Sheet gốc
+                activityName,
+                pointValue,
+                actInfo.date || '',
+                file.getName(),
+                sheetName
               ]);
               recordsFromSheet++;
             }
@@ -288,6 +309,9 @@ function extractPointsFromHeaders(headers, colMap) {
   // Pattern 2: +2đ, +1.5 điểm, 2đ, cộng 2 điểm...
   var patternPlusPoint = /\+?(\d+(?:\.\d+)?)\s*(?:đ|điểm|diem|d)/i;
   
+  // Pattern 3: "Điểm", "Điểm số", "Điểm cộng" — cột chứa từ "điểm"
+  var patternDiemColumn = /(?:điểm|diem|score|point)/i;
+  
   for (var i = 0; i < headers.length; i++) {
     // Bỏ qua các cột đã biết (MSSV, Họ tên, Lớp, Ngày)
     if (i === colMap.mssvCol || i === colMap.nameCol || i === colMap.classCol) continue;
@@ -297,6 +321,7 @@ function extractPointsFromHeaders(headers, colMap) {
     
     var pointValue = null;
     var match;
+    var isDiemColumn = false;
     
     // Thử pattern 1: điểm trong ngoặc (+X)
     match = header.match(patternParenthesis);
@@ -326,6 +351,17 @@ function extractPointsFromHeaders(headers, colMap) {
       result[i] = {
         name: activityName,
         point: pointValue
+      };
+      continue;
+    }
+    
+    // Pattern 3: Cột tên "Điểm", "Điểm số" — đánh dấu để xử lý sau
+    // Điểm sẽ được đọc từ giá trị ô, tên hoạt động từ tên sheet/file
+    if (!pointValue && patternDiemColumn.test(header)) {
+      result[i] = {
+        name: '__DIEM_COLUMN__',  // placeholder, sẽ thay bằng tên sheet
+        point: 0,                  // sẽ đọc từ giá trị ô
+        isDynamic: true
       };
     }
   }
