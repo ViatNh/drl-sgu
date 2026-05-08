@@ -23,6 +23,7 @@ const CONFIG = {
 // ═══════════════════════════════════════════════════════════════════════════
 const DOM = {
   mssvInput: document.getElementById('mssvInput'),
+  classSelect: document.getElementById('classSelect'),
   searchBtn: document.getElementById('searchBtn'),
   searchBtnText: document.getElementById('searchBtnText'),
   searchSpinner: document.getElementById('searchSpinner'),
@@ -64,6 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initEventListeners();
   renderRecentMSSV();
   showEmptyState();
+  loadClasses();
   checkAPIHealth();
 });
 
@@ -197,6 +199,24 @@ async function checkAPIHealth() {
   } catch (err) {
     console.warn('⚠️ API health check failed:', err.message);
     DOM.footerUpdateTime.textContent = 'Không kết nối được máy chủ';
+  }
+}
+
+/**
+ * Load danh sách lớp từ API và hiển thị dropdown nếu có nhiều lớp.
+ */
+async function loadClasses() {
+  try {
+    const data = await jsonpAPI({ action: 'classes' });
+    if (data.classes && data.classes.length > 1) {
+      // Có nhiều lớp → hiện dropdown
+      DOM.classSelect.classList.remove('hidden');
+      DOM.classSelect.innerHTML = data.classes.map(c => 
+        `<option value="${c}" ${c === data.default ? 'selected' : ''}>${c}</option>`
+      ).join('');
+    }
+  } catch (e) {
+    // Nếu không load được classes → để CONFIG.DEFAULT_CLASS làm fallback
   }
 }
 

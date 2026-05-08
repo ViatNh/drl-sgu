@@ -27,8 +27,25 @@ var CONFIG = {
   DRIVE_FOLDER_ID: '1TOgKamuzGi0EwYSdq3U5L8yhts0SWJHB',
   MASTER_SHEET_ID: '1-ei7QpPzvKvCXNh4zgbRv_Dk60Gr6LmBqxwyOSpsHuU',
   CACHE_DURATION: 21600,
-  TARGET_CLASS: 'DCT1253',
+  // Hỗ trợ đa lớp — thêm class vào đây để mở rộng
+  TARGET_CLASSES: ['DCT1253'],
+  // Thời gian trigger (giờ UTC+7)
+  TRIGGER_HOURS: [2, 14],
+  // Watch interval (phút) — kiểm tra file thay đổi
+  WATCH_INTERVAL_MINUTES: 15,
+  // Default class cho frontend
+  DEFAULT_CLASS: 'DCT1253',
 };
+
+/**
+ * Kiểm tra class có nằm trong danh sách cần lọc không.
+ */
+function isTargetClass(className) {
+  for (var i = 0; i < CONFIG.TARGET_CLASSES.length; i++) {
+    if (className === CONFIG.TARGET_CLASSES[i].toUpperCase()) return true;
+  }
+  return false;
+}
 
 // Force Apps Script nhận diện scope Drive (cho phép convert Excel)
 var _driveApiCheck = (typeof Drive !== 'undefined') ? Drive.Files : UrlFetchApp;
@@ -225,20 +242,21 @@ function updateMasterDCT1253() {
                 }
               }
               
-              // Chỉ giữ sinh viên DCT1253
-              if (lop !== CONFIG.TARGET_CLASS) continue;
+              // Chỉ giữ sinh viên trong danh sách lớp cần lọc
+              if (!isTargetClass(lop)) continue;
               
               var hoTen = (hoLot + ' ' + ten).trim();
               if (!hoTen || hoTen.length < 3) continue;
               
-              // Tạo bản ghi (8 cột: MSSV | Họ tên | Mục | Tên hoạt động | Số điểm | Ngày | File gốc | Sheet gốc)
+              // 9 cột: MSSV | Họ tên | Lớp | Mục | Tên HĐ | Điểm | Ngày | File gốc | Sheet gốc
               allRecords.push([
                 mssv,
                 hoTen,
-                extractCategory(file.getName()),  // Mục (VD: "IV.5")
+                lop,                                     // Lớp (VD: DCT1253)
+                extractCategory(file.getName()),          // Mục (VD: "IV.5")
                 currentActivity.name,
                 currentActivity.point,
-                startTime.toLocaleDateString('vi-VN'),  // Ngày quét
+                startTime.toLocaleDateString('vi-VN'),
                 file.getName(),
                 sheetName
               ]);
@@ -271,19 +289,19 @@ function updateMasterDCT1253() {
     
     // Xóa dữ liệu cũ và ghi mới (trừ hàng tiêu đề)
     if (masterSheet.getLastRow() > 1) {
-      masterSheet.getRange(2, 1, masterSheet.getLastRow() - 1, 8).clearContent();
+      masterSheet.getRange(2, 1, masterSheet.getLastRow() - 1, 9).clearContent();
     }
     
     // Ghi tiêu đề nếu sheet trống
-    var headerRow = ['MSSV', 'Họ tên', 'Mục', 'Tên hoạt động', 'Số điểm', 'Ngày thực hiện', 'File gốc', 'Sheet gốc'];
-    masterSheet.getRange(1, 1, 1, 8).setValues([headerRow]);
+    var headerRow = ['MSSV', 'Họ tên', 'Lớp', 'Mục', 'Tên hoạt động', 'Số điểm', 'Ngày thực hiện', 'File gốc', 'Sheet gốc'];
+    masterSheet.getRange(1, 1, 1, 9).setValues([headerRow]);
     
     // Ghi dữ liệu một lần duy nhất
     if (allRecords.length > 0) {
-      masterSheet.getRange(2, 1, allRecords.length, 8).setValues(allRecords);
+      masterSheet.getRange(2, 1, allRecords.length, 9).setValues(allRecords);
       // Định dạng cột MSSV và Số điểm
       masterSheet.getRange(2, 1, allRecords.length, 1).setNumberFormat('@');  // Text
-      masterSheet.getRange(2, 5, allRecords.length, 1).setNumberFormat('0.0#');
+      masterSheet.getRange(2, 6, allRecords.length, 1).setNumberFormat('0.0#');
     }
     
     // Bước 4: Xóa cache cũ để lần gọi API tiếp theo lấy dữ liệu mới
@@ -703,16 +721,26 @@ function handleRequest(e) {
         status: 'ok',
         timestamp: new Date().toISOString(),
         version: '1.0.0',
-        class: CONFIG.TARGET_CLASS
+        class: CONFIG.TARGET_CLASSES.join(', ')
+      };
+    }
+    // ── Endpoint: Danh sách lớp ──
+    else if (action === 'classes') {
+      responseData = {
+        status: 'ok',
+        classes: CONFIG.TARGET_CLASSES,
+        default: CONFIG.DEFAULT_CLASS
       };
     }
     // ── Mặc định: Hướng dẫn sử dụng ──
     else {
       responseData = {
         status: 'ok',
-        message: 'API Tra cứu Điểm Hoạt động DCT1253',
+        message: 'API Tra cứu Điểm Hoạt động',
+        classes: CONFIG.TARGET_CLASSES,
         usage: {
           lookup: '?mssv=225xxxx',
+          classes: '?action=classes',
           stats: '?action=stats',
           health: '?action=health'
         },
@@ -784,12 +812,12 @@ function queryMSSV(mssv) {
   for (var i = 0; i < allData.length; i++) {
     if (String(allData[i][0]).trim() === mssv) {
       studentRecords.push({
-        muc: allData[i][2] || 'Không rõ',
-        ten_hoat_dong: allData[i][3] || 'Không rõ',
-        so_diem: parseFloat(allData[i][4]) || 0,
-        ngay: allData[i][5] || 'Không rõ',
-        file_goc: allData[i][6] || '',
-        sheet_goc: allData[i][7] || ''
+        muc: allData[i][3] || 'Không rõ',
+        ten_hoat_dong: allData[i][4] || 'Không rõ',
+        so_diem: parseFloat(allData[i][5]) || 0,
+        ngay: allData[i][6] || 'Không rõ',
+        file_goc: allData[i][7] || '',
+        sheet_goc: allData[i][8] || ''
       });
       if (!hoTen) hoTen = allData[i][1];
     }
@@ -799,7 +827,7 @@ function queryMSSV(mssv) {
   if (studentRecords.length === 0) {
     var result = {
       status: 'not_found',
-      message: 'Không tìm thấy sinh viên với MSSV ' + mssv + ' trong lớp ' + CONFIG.TARGET_CLASS + '.',
+      message: 'Không tìm thấy sinh viên với MSSV ' + mssv + '.',
       mssv: mssv
     };
     return result;
@@ -864,7 +892,7 @@ function loadMasterData() {
     return [];
   }
   
-  var data = masterSheet.getRange(2, 1, masterSheet.getLastRow() - 1, 8).getValues();
+  var data = masterSheet.getRange(2, 1, masterSheet.getLastRow() - 1, 9).getValues();
   
   // Cache dữ liệu (giới hạn để tránh vượt quá 100KB cache limit của Apps Script)
   try {
@@ -924,8 +952,8 @@ function getStats() {
   
   for (var i = 0; i < allData.length; i++) {
     var mssv = String(allData[i][0]).trim();
-    var score = parseFloat(allData[i][4]) || 0;
-    var activity = allData[i][3] || 'Không rõ';
+    var score = parseFloat(allData[i][5]) || 0;
+    var activity = allData[i][4] || 'Không rõ';
     
     studentSet[mssv] = true;
     
@@ -994,22 +1022,60 @@ function getWebAppUrl() {
  * Chạy hàm này MỘT LẦN từ trình chỉnh sửa Apps Script để cài trigger.
  */
 function setupDailyTrigger() {
-  // Xóa trigger cũ (tránh trùng lặp)
-  var triggers = ScriptApp.getProjectTriggers();
-  for (var i = 0; i < triggers.length; i++) {
-    if (triggers[i].getHandlerFunction() === 'updateMasterDCT1253') {
-      ScriptApp.deleteTrigger(triggers[i]);
-    }
+  clearAllTriggers();
+  
+  // Trigger kép: chạy ETL vào các giờ đã cấu hình
+  for (var h = 0; h < CONFIG.TRIGGER_HOURS.length; h++) {
+    ScriptApp.newTrigger('updateMasterDCT1253')
+      .timeBased()
+      .everyDays(1)
+      .atHour(CONFIG.TRIGGER_HOURS[h])
+      .create();
   }
   
-  // Tạo trigger mới: chạy lúc 2:00 - 3:00 AM mỗi ngày
-  ScriptApp.newTrigger('updateMasterDCT1253')
+  // Trigger watch: kiểm tra file thay đổi mỗi N phút
+  ScriptApp.newTrigger('watchDriveChanges')
     .timeBased()
-    .everyDays(1)
-    .atHour(2)
+    .everyMinutes(CONFIG.WATCH_INTERVAL_MINUTES)
     .create();
   
-  Logger.log('✅ Đã cài đặt trigger: chạy updateMasterDCT1253() lúc 2:00 AM hàng ngày');
+  Logger.log('✅ Triggers: ETL lúc ' + CONFIG.TRIGGER_HOURS.join('h, ') + 'h + watch mỗi ' + CONFIG.WATCH_INTERVAL_MINUTES + 'ph');
+}
+
+/**
+ * Kiểm tra xem có file nào trong thư mục Khoa bị thay đổi không.
+ * Nếu có → chạy updateMasterDCT1253() ngay lập tức.
+ */
+function watchDriveChanges() {
+  try {
+    var folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+    var props = PropertiesService.getScriptProperties();
+    var lastCheck = props.getProperty('WATCH_LAST_CHECK') || '0';
+    var currentCheck = Date.now().toString();
+    var hasChanges = false;
+    
+    // Kiểm tra tất cả file trong thư mục
+    var fileTypes = [MimeType.GOOGLE_SHEETS, MimeType.MICROSOFT_EXCEL, MimeType.MICROSOFT_EXCEL_LEGACY];
+    for (var t = 0; t < fileTypes.length && !hasChanges; t++) {
+      var files = folder.getFilesByType(fileTypes[t]);
+      while (files.hasNext() && !hasChanges) {
+        var f = files.next();
+        var updated = f.getLastUpdated().getTime();
+        if (updated > parseInt(lastCheck)) {
+          hasChanges = true;
+        }
+      }
+    }
+    
+    props.setProperty('WATCH_LAST_CHECK', currentCheck);
+    
+    if (hasChanges) {
+      console.log('🔄 Phát hiện thay đổi — chạy ETL...');
+      updateMasterDCT1253();
+    }
+  } catch (e) {
+    console.error('watchDriveChanges error: ' + e.toString());
+  }
 }
 
 /**

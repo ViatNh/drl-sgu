@@ -90,6 +90,12 @@
 
       <!-- Input Group -->
       <div class="flex flex-col sm:flex-row gap-3 max-w-xl mx-auto">
+        <!-- Lớp selector (ẩn nếu chỉ có 1 lớp) -->
+        <select id="classSelect" 
+                class="px-3 py-3.5 border-2 border-gray-300 rounded-xl 
+                       focus:border-brand-500 focus:ring-4 focus:ring-brand-50 outline-none
+                       transition-all duration-200 text-sm font-medium bg-white hidden">
+        </select>
         <div class="flex-1 relative">
           <input
             type="text"
