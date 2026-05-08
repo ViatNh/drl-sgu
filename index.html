@@ -8,6 +8,9 @@
 
   <title>Tra cứu Điểm Hoạt Động - DCT1253</title>
 
+  <!-- html2canvas (chụp ảnh bảng chia sẻ) -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -206,16 +209,19 @@
             <table class="w-full text-sm" id="detailTable">
               <thead>
                 <tr class="border-b-2 border-gray-200 text-left text-gray-500 text-xs uppercase tracking-wider">
+                  <th class="pb-3 px-2 sm:px-3 cursor-pointer hover:text-gray-700 transition-colors w-16" data-sort="muc">
+                    Mục <span class="sort-arrow">↕</span>
+                  </th>
                   <th class="pb-3 px-2 sm:px-3 cursor-pointer hover:text-gray-700 transition-colors" data-sort="ten_hoat_dong">
                     Hoạt động <span class="sort-arrow">↕</span>
                   </th>
-                  <th class="pb-3 px-2 sm:px-3 text-center cursor-pointer hover:text-gray-700 transition-colors w-20" data-sort="so_diem">
+                  <th class="pb-3 px-2 sm:px-3 text-center cursor-pointer hover:text-gray-700 transition-colors w-16" data-sort="so_diem">
                     Điểm <span class="sort-arrow">↕</span>
                   </th>
-                  <th class="pb-3 px-2 sm:px-3 cursor-pointer hover:text-gray-700 transition-colors hidden sm:table-cell" data-sort="ngay">
+                  <th class="pb-3 px-2 sm:px-3 cursor-pointer hover:text-gray-700 transition-colors hidden sm:table-cell w-24" data-sort="ngay">
                     Ngày <span class="sort-arrow">↕</span>
                   </th>
-                  <th class="pb-3 px-2 sm:px-3 text-gray-400 hidden md:table-cell">
+                  <th class="pb-3 px-2 sm:px-3 text-gray-400 hidden lg:table-cell">
                     Nguồn
                   </th>
                 </tr>

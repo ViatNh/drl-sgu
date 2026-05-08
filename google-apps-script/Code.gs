@@ -231,13 +231,14 @@ function updateMasterDCT1253() {
               var hoTen = (hoLot + ' ' + ten).trim();
               if (!hoTen || hoTen.length < 3) continue;
               
-              // Tạo bản ghi
+              // Tạo bản ghi (8 cột: MSSV | Họ tên | Mục | Tên hoạt động | Số điểm | Ngày | File gốc | Sheet gốc)
               allRecords.push([
                 mssv,
                 hoTen,
+                extractCategory(file.getName()),  // Mục (VD: "IV.5")
                 currentActivity.name,
                 currentActivity.point,
-                '',                       // ngày (không có trong format này)
+                startTime.toLocaleDateString('vi-VN'),  // Ngày quét
                 file.getName(),
                 sheetName
               ]);
@@ -270,19 +271,19 @@ function updateMasterDCT1253() {
     
     // Xóa dữ liệu cũ và ghi mới (trừ hàng tiêu đề)
     if (masterSheet.getLastRow() > 1) {
-      masterSheet.getRange(2, 1, masterSheet.getLastRow() - 1, 7).clearContent();
+      masterSheet.getRange(2, 1, masterSheet.getLastRow() - 1, 8).clearContent();
     }
     
     // Ghi tiêu đề nếu sheet trống
-    var headerRow = ['MSSV', 'Họ tên', 'Tên hoạt động', 'Số điểm', 'Ngày thực hiện', 'File gốc', 'Sheet gốc'];
-    masterSheet.getRange(1, 1, 1, headerRow.length).setValues([headerRow]);
+    var headerRow = ['MSSV', 'Họ tên', 'Mục', 'Tên hoạt động', 'Số điểm', 'Ngày thực hiện', 'File gốc', 'Sheet gốc'];
+    masterSheet.getRange(1, 1, 1, 8).setValues([headerRow]);
     
     // Ghi dữ liệu một lần duy nhất
     if (allRecords.length > 0) {
-      masterSheet.getRange(2, 1, allRecords.length, 7).setValues(allRecords);
+      masterSheet.getRange(2, 1, allRecords.length, 8).setValues(allRecords);
       // Định dạng cột MSSV và Số điểm
       masterSheet.getRange(2, 1, allRecords.length, 1).setNumberFormat('@');  // Text
-      masterSheet.getRange(2, 4, allRecords.length, 1).setNumberFormat('0.0#');
+      masterSheet.getRange(2, 5, allRecords.length, 1).setNumberFormat('0.0#');
     }
     
     // Bước 4: Xóa cache cũ để lần gọi API tiếp theo lấy dữ liệu mới
@@ -591,6 +592,12 @@ function convertExcelToGoogleSheet(file, convertedFolderId, logMessages) {
   return null;
 }
 
+function extractCategory(fileName) {
+  var match = fileName.match(/^([IVX]+\.\d+)/);
+  if (match) return match[1];
+  return fileName.substring(0, 40);
+}
+
 /**
  * Ghi log vào sheet "Log".
  */
@@ -777,11 +784,12 @@ function queryMSSV(mssv) {
   for (var i = 0; i < allData.length; i++) {
     if (String(allData[i][0]).trim() === mssv) {
       studentRecords.push({
-        ten_hoat_dong: allData[i][2] || 'Không rõ',
-        so_diem: parseFloat(allData[i][3]) || 0,
-        ngay: allData[i][4] || 'Không rõ',
-        file_goc: allData[i][5] || '',
-        sheet_goc: allData[i][6] || ''
+        muc: allData[i][2] || 'Không rõ',
+        ten_hoat_dong: allData[i][3] || 'Không rõ',
+        so_diem: parseFloat(allData[i][4]) || 0,
+        ngay: allData[i][5] || 'Không rõ',
+        file_goc: allData[i][6] || '',
+        sheet_goc: allData[i][7] || ''
       });
       if (!hoTen) hoTen = allData[i][1];
     }
@@ -856,7 +864,7 @@ function loadMasterData() {
     return [];
   }
   
-  var data = masterSheet.getRange(2, 1, masterSheet.getLastRow() - 1, 7).getValues();
+  var data = masterSheet.getRange(2, 1, masterSheet.getLastRow() - 1, 8).getValues();
   
   // Cache dữ liệu (giới hạn để tránh vượt quá 100KB cache limit của Apps Script)
   try {
@@ -916,8 +924,8 @@ function getStats() {
   
   for (var i = 0; i < allData.length; i++) {
     var mssv = String(allData[i][0]).trim();
-    var score = parseFloat(allData[i][3]) || 0;
-    var activity = allData[i][2] || 'Không rõ';
+    var score = parseFloat(allData[i][4]) || 0;
+    var activity = allData[i][3] || 'Không rõ';
     
     studentSet[mssv] = true;
     

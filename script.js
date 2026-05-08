@@ -259,36 +259,63 @@ async function handleSearch() {
 async function handleShare() {
   if (!currentResult) return;
   
-  const shareText = [
-    `🎓 Điểm hoạt động - ${currentResult.ho_ten}`,
-    `MSSV: ${currentResult.mssv}`,
-    `Tổng điểm: ${currentResult.tong_diem} điểm`,
-    `Số hoạt động: ${currentResult.so_hoat_dong}`,
-    '',
-    '---',
-    `Tra cứu tại: ${window.location.href}`,
-  ].join('\n');
+  const shareBtn = DOM.shareBtn;
+  const originalText = shareBtn.textContent;
+  shareBtn.textContent = '⏳ Đang chụp...';
+  shareBtn.disabled = true;
   
-  // Thử dùng Web Share API (mobile)
-  if (navigator.share) {
-    try {
-      await navigator.share({
-        title: `Điểm hoạt động - ${currentResult.ho_ten}`,
-        text: shareText,
-        url: window.location.href,
-      });
-      return;
-    } catch (err) {
-      // User cancelled hoặc không hỗ trợ → fallback clipboard
-    }
-  }
-  
-  // Fallback: copy to clipboard
   try {
-    await navigator.clipboard.writeText(shareText);
-    showToast('✅ Đã sao chép kết quả vào clipboard!');
+    // Chụp ảnh bảng kết quả bằng html2canvas
+    const resultCard = document.getElementById('resultCard');
+    const canvas = await html2canvas(resultCard, {
+      backgroundColor: '#ffffff',
+      scale: 2,  // Độ phân giải cao
+      useCORS: true,
+      logging: false,
+    });
+    
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    const file = new File([blob], `DCT1253_${currentResult.mssv}.png`, { type: 'image/png' });
+    
+    const shareData = {
+      title: `Điểm hoạt động - ${currentResult.ho_ten}`,
+      text: `${currentResult.ho_ten} (${currentResult.mssv}): ${currentResult.tong_diem} điểm`,
+      files: [file],
+    };
+    
+    // Web Share API với file (mobile)
+    if (navigator.canShare && navigator.canShare(shareData)) {
+      await navigator.share(shareData);
+      return;
+    }
+    
+    // Fallback: tải ảnh về máy
+    const link = document.createElement('a');
+    link.download = `DCT1253_${currentResult.mssv}.png`;
+    link.href = URL.createObjectURL(blob);
+    link.click();
+    URL.revokeObjectURL(link.href);
+    showToast('📸 Đã tải ảnh kết quả!');
+    
   } catch (err) {
-    showToast('❌ Không thể sao chép. Vui lòng thử lại.');
+    if (err.name !== 'AbortError') {
+      // Fallback text nếu html2canvas lỗi
+      const shareText = [
+        `🎓 ${currentResult.ho_ten} (${currentResult.mssv})`,
+        `🏆 Tổng: ${currentResult.tong_diem} điểm | ${currentResult.so_hoat_dong} hoạt động`,
+        `🔗 ${window.location.href}?mssv=${currentResult.mssv}`,
+      ].join('\n');
+      
+      try {
+        await navigator.clipboard.writeText(shareText);
+        showToast('✅ Đã sao chép kết quả!');
+      } catch {
+        showToast('❌ Không thể chia sẻ. Thử lại sau.');
+      }
+    }
+  } finally {
+    shareBtn.textContent = originalText;
+    shareBtn.disabled = false;
   }
 }
 
@@ -389,7 +416,7 @@ function renderDetailRows(details) {
   if (!details || details.length === 0) {
     DOM.detailBody.innerHTML = `
       <tr>
-        <td colspan="4" class="py-8 text-center text-gray-400">
+        <td colspan="5" class="py-8 text-center text-gray-400">
           Không có hoạt động nào
         </td>
       </tr>
@@ -401,8 +428,12 @@ function renderDetailRows(details) {
     const row = document.createElement('tr');
     row.className = index % 2 === 0 ? 'bg-gray-50/50' : 'bg-white';
     row.innerHTML = `
+      <td class="py-3 px-2 sm:px-3 text-xs font-mono text-brand-700 font-semibold whitespace-nowrap">
+        ${escapeHtml(item.muc || '—')}
+      </td>
       <td class="py-3 px-2 sm:px-3 font-medium text-gray-800">
         ${escapeHtml(item.ten_hoat_dong)}
+        <span class="block text-xs text-gray-400 font-normal sm:hidden">${escapeHtml(item.muc || '')}</span>
       </td>
       <td class="py-3 px-2 sm:px-3 text-center">
         <span class="inline-flex items-center justify-center px-2.5 py-1 rounded-full 
@@ -410,10 +441,10 @@ function renderDetailRows(details) {
           +${item.so_diem}
         </span>
       </td>
-      <td class="py-3 px-2 sm:px-3 text-gray-500 text-xs hidden sm:table-cell">
+      <td class="py-3 px-2 sm:px-3 text-gray-500 text-xs hidden sm:table-cell whitespace-nowrap">
         ${item.ngay !== 'Không rõ' ? formatDate(item.ngay) : '—'}
       </td>
-      <td class="py-3 px-2 sm:px-3 text-gray-400 text-xs hidden md:table-cell max-w-[120px] truncate" 
+      <td class="py-3 px-2 sm:px-3 text-gray-400 text-xs hidden lg:table-cell max-w-[120px] truncate" 
           title="${escapeHtml(item.file_goc || '')}">
         ${item.file_goc ? escapeHtml(item.file_goc) : '—'}
       </td>
@@ -603,18 +634,21 @@ function formatDate(dateStr) {
   }
   
   try {
-    // Thử parse ISO date
     const d = new Date(dateStr);
     if (!isNaN(d.getTime())) {
-      return d.toLocaleDateString('vi-VN', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
+      const datePart = d.toLocaleDateString('vi-VN', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
       });
+      const timePart = d.toLocaleTimeString('vi-VN', {
+        hour: '2-digit', minute: '2-digit',
+      });
+      // Nếu có giờ (không phải 00:00) thì hiển thị kèm
+      if (timePart !== '00:00') {
+        return datePart + ' ' + timePart;
+      }
+      return datePart;
     }
-  } catch (e) {
-    // Fallback: trả về chuỗi gốc
-  }
+  } catch (e) {}
   
   return dateStr;
 }
