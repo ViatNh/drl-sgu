@@ -24,11 +24,14 @@
 // CẤU HÌNH - THAY ĐỔI TẠI ĐÂY
 // ═══════════════════════════════════════════════════════════════════════════
 var CONFIG = {
-  DRIVE_FOLDER_ID: '1TOgKamuzGi0EwYSdq3U5L8yhts0SWJHB',  // ID thư mục Drive của Khoa
-  MASTER_SHEET_ID: '1-ei7QpPzvKvCXNh4zgbRv_Dk60Gr6LmBqxwyOSpsHuU',                       // ← DÁN ID GOOGLE SHEET MASTER_DCT1253 VÀO ĐÂY
-  CACHE_DURATION: 21600,                     // 6 giờ (giây)
-  TARGET_CLASS: 'DCT1253',                   // Lớp cần lọc
+  DRIVE_FOLDER_ID: '1TOgKamuzGi0EwYSdq3U5L8yhts0SWJHB',
+  MASTER_SHEET_ID: '1-ei7QpPzvKvCXNh4zgbRv_Dk60Gr6LmBqxwyOSpsHuU',
+  CACHE_DURATION: 21600,
+  TARGET_CLASS: 'DCT1253',
 };
+
+// Force Apps Script nhận diện scope Drive (cho phép convert Excel)
+var _driveApiCheck = (typeof Drive !== 'undefined') ? Drive.Files : UrlFetchApp;
 
 /**
  * Lấy reference đến Spreadsheet Master_DCT1253.
@@ -98,7 +101,7 @@ function updateMasterDCT1253() {
       if (!isGoogleSheet) {
         // Thử convert Excel → Google Sheets
         try {
-          var convertedId = convertExcelToGoogleSheet(file);
+          var convertedId = convertExcelToGoogleSheet(file, logMessages);
           if (convertedId) {
             spreadsheet = SpreadsheetApp.openById(convertedId);
             logMessages.push('  🔄 [' + fileCount + '] ' + file.getName() + ' → đã convert sang Google Sheets');
@@ -494,20 +497,69 @@ function removeVietnameseTones(str) {
  * @param {File} file - File Excel từ DriveApp
  * @return {string|null} ID của Google Sheet đã convert, hoặc null nếu thất bại
  */
-function convertExcelToGoogleSheet(file) {
+function convertExcelToGoogleSheet(file, logMessages) {
+  var blob = file.getBlob();
+  var fileName = file.getName();
+  
+  // Cách 1: Dùng Advanced Drive Service
   try {
-    var blob = file.getBlob();
-    var resource = {
-      title: file.getName() + ' (converted)',
-      mimeType: MimeType.GOOGLE_SHEETS,
-      parents: [{ id: CONFIG.DRIVE_FOLDER_ID }]
-    };
-    var converted = Drive.Files.insert(resource, blob, { convert: true });
-    return converted.id;
+    if (typeof Drive !== 'undefined' && Drive.Files) {
+      var resource = {
+        title: fileName + ' (converted)',
+        mimeType: MimeType.GOOGLE_SHEETS,
+        parents: [{ id: CONFIG.DRIVE_FOLDER_ID }]
+      };
+      var converted = Drive.Files.insert(resource, blob, { convert: true });
+      logMessages.push('      🔧 Convert OK (Drive API): ' + fileName);
+      return converted.id;
+    }
   } catch (e) {
-    // Drive API chưa được bật hoặc lỗi khác
-    return null;
+    logMessages.push('      🔧 Drive API failed: ' + e.toString().substring(0, 100));
   }
+  
+  // Cách 2: Dùng UrlFetchApp gọi REST API
+  try {
+    var token = ScriptApp.getOAuthToken();
+    var metadata = {
+      name: fileName + ' (converted)',
+      mimeType: MimeType.GOOGLE_SHEETS,
+      parents: [CONFIG.DRIVE_FOLDER_ID]
+    };
+    
+    var boundary = 'hermes_boundary_' + Math.random().toString(36).slice(2);
+    var requestBody = '';
+    requestBody += '--' + boundary + '\r\n';
+    requestBody += 'Content-Type: application/json; charset=UTF-8\r\n\r\n';
+    requestBody += JSON.stringify(metadata) + '\r\n';
+    requestBody += '--' + boundary + '\r\n';
+    requestBody += 'Content-Type: ' + blob.getContentType() + '\r\n';
+    requestBody += 'Content-Transfer-Encoding: base64\r\n\r\n';
+    requestBody += Utilities.base64Encode(blob.getBytes()) + '\r\n';
+    requestBody += '--' + boundary + '--';
+    
+    var resp = UrlFetchApp.fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&convert=true',
+      {
+        method: 'POST',
+        contentType: 'multipart/related; boundary=' + boundary,
+        headers: { Authorization: 'Bearer ' + token },
+        payload: requestBody,
+        muteHttpExceptions: true
+      }
+    );
+    
+    if (resp.getResponseCode() === 200) {
+      var result = JSON.parse(resp.getContentText());
+      logMessages.push('      🔧 Convert OK (REST API): ' + fileName);
+      return result.id;
+    } else {
+      logMessages.push('      🔧 REST API HTTP ' + resp.getResponseCode() + ': ' + resp.getContentText().substring(0, 100));
+    }
+  } catch (e2) {
+    logMessages.push('      🔧 REST API error: ' + e2.toString().substring(0, 100));
+  }
+  
+  return null;
 }
 
 /**
