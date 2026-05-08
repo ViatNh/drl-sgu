@@ -126,39 +126,59 @@ function initEventListeners() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Gọi API tra cứu điểm theo MSSV.
+ * Gọi API bằng JSONP — bypass CORS.
+ * Dùng <script> tag thay vì fetch() để tránh lỗi CORS.
  * 
- * @param {string} mssv - Mã số sinh viên
+ * @param {Object} params - Tham số query (VD: {mssv: '225...', action: 'health'})
  * @return {Promise<Object>} Kết quả từ API
  */
+function jsonpAPI(params) {
+  return new Promise((resolve, reject) => {
+    const callbackName = 'dct1253_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    
+    // Build URL
+    const queryParts = [];
+    for (const [key, val] of Object.entries(params)) {
+      queryParts.push(encodeURIComponent(key) + '=' + encodeURIComponent(val));
+    }
+    queryParts.push('callback=' + callbackName);
+    const url = CONFIG.API_BASE_URL + '?' + queryParts.join('&');
+    
+    // Timeout sau 10 giây
+    const timeoutId = setTimeout(() => {
+      cleanup();
+      reject(new Error('Yêu cầu quá thời gian chờ. Vui lòng thử lại.'));
+    }, 10000);
+    
+    // Đăng ký callback global
+    window[callbackName] = (data) => {
+      cleanup();
+      resolve(data);
+    };
+    
+    // Tạo <script> tag
+    const script = document.createElement('script');
+    script.src = url;
+    script.onerror = () => {
+      cleanup();
+      reject(new Error('Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối mạng.'));
+    };
+    
+    function cleanup() {
+      clearTimeout(timeoutId);
+      delete window[callbackName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+    }
+    
+    document.body.appendChild(script);
+  });
+}
+
+/**
+ * Tra cứu điểm sinh viên qua API.
+ */
 async function fetchStudentScore(mssv) {
-  const url = `${CONFIG.API_BASE_URL}?mssv=${encodeURIComponent(mssv)}`;
-  
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-  
-  try {
-    const response = await fetch(url, { 
-      signal: controller.signal,
-      // CORS mode: Google Apps Script Web App hỗ trợ CORS
-      mode: 'cors',
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    return data;
-    
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      throw new Error('Yêu cầu quá thời gian chờ. Vui lòng thử lại.');
-    }
-    throw new Error('Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối mạng.');
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  return jsonpAPI({ mssv });
 }
 
 /**
@@ -166,9 +186,7 @@ async function fetchStudentScore(mssv) {
  */
 async function checkAPIHealth() {
   try {
-    const url = `${CONFIG.API_BASE_URL}?action=health`;
-    const response = await fetch(url, { mode: 'cors' });
-    const data = await response.json();
+    const data = await jsonpAPI({ action: 'health' });
     
     if (data.status === 'ok') {
       console.log('✅ API connected:', data);

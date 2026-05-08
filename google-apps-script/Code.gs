@@ -674,11 +674,13 @@ function doPost(e) {
  */
 function handleRequest(e) {
   var responseData;
+  var callback = null;
   
   try {
     var params = e && e.parameter ? e.parameter : {};
     var mssv = (params.mssv || '').trim();
     var action = (params.action || '').trim().toLowerCase();
+    callback = (params.callback || '').trim();  // JSONP callback
     
     // ── Endpoint: Tra cứu điểm theo MSSV ──
     if (mssv) {
@@ -717,6 +719,14 @@ function handleRequest(e) {
     };
   }
   
+  // JSONP mode: wrap trong callback để bypass CORS
+  if (callback && /^[a-zA-Z_$][a-zA-Z0-9_$.]*$/.test(callback)) {
+    return ContentService.createTextOutput(
+      callback + '(' + JSON.stringify(responseData) + ');'
+    ).setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  
+  // Normal JSON mode (cho Python CLI, browser trực tiếp)
   return ContentService.createTextOutput(JSON.stringify(responseData, null, 2))
     .setMimeType(ContentService.MimeType.JSON);
 }
