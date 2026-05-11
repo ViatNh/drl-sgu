@@ -1,33 +1,10 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.egg-info/
-dist/
-build/
+# Google Apps Script backend — managed separately via clasp
+# NOT pushed to public GitHub
+google-apps-script/
 
-# Virtual Environment
-venv/
-.venv/
-env/
+# Admin stats (local only)
+admin/
 
-# Config (chứa API keys, IDs nhạy cảm)
-admin/config.json
-.dct_admin/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
+# OS files
 .DS_Store
 Thumbs.db
-Desktop.ini
-
-# Logs
-*.log
-
-# Node (nếu có)
-node_modules/
