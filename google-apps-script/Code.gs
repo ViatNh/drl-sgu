@@ -4,7 +4,7 @@
  * ============================================================================
  * File: Code.gs
  * Mô tả: Google Apps Script chứa toàn bộ logic ETL Pipeline + Backend API
- * Tác giả: ViatNh
+ * Tác giả: ViatNh - The Dog House
  * Ngày tạo: 08/05/2026
  * ============================================================================
  * 
@@ -542,12 +542,26 @@ function getOrCreateConvertedFolder() {
 function convertExcelToGoogleSheet(file, convertedFolderId, logMessages) {
   var blob = file.getBlob();
   var fileName = file.getName();
+  var convertedFileName = fileName + ' (converted)';
+  
+  // Xóa file convert cũ cùng tên (nếu có) để tránh rác
+  try {
+    var oldFiles = DriveApp.getFolderById(convertedFolderId).getFilesByName(convertedFileName);
+    while (oldFiles.hasNext()) {
+      var oldFile = oldFiles.next();
+      oldFile.setTrashed(true);
+      logMessages.push('      🗑️ Đã xóa convert cũ: ' + convertedFileName);
+    }
+  } catch (e) {
+    // Nếu không xóa được (vd: không có quyền) thì vẫn tiếp tục
+    logMessages.push('      ⚠️ Không xóa được convert cũ: ' + e.toString().substring(0, 60));
+  }
   
   // Cách 1: Dùng Drive API v3 (Drive.Files.create)
   try {
     if (typeof Drive !== 'undefined' && Drive.Files) {
       var resource = {
-        name: fileName + ' (converted)',
+        name: convertedFileName,
         mimeType: MimeType.GOOGLE_SHEETS,
         parents: [convertedFolderId]
       };
@@ -559,7 +573,7 @@ function convertExcelToGoogleSheet(file, convertedFolderId, logMessages) {
     // Thử v2 syntax
     try {
       var resourceV2 = {
-        title: fileName + ' (converted)',
+        title: convertedFileName,
         mimeType: MimeType.GOOGLE_SHEETS,
         parents: [{ id: convertedFolderId }]
       };
@@ -575,7 +589,7 @@ function convertExcelToGoogleSheet(file, convertedFolderId, logMessages) {
   try {
     var token = ScriptApp.getOAuthToken();
     var metadata = {
-      name: fileName + ' (converted)',
+      name: convertedFileName,
       mimeType: MimeType.GOOGLE_SHEETS,
       parents: [convertedFolderId]
     };
